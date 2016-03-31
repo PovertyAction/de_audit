@@ -1,57 +1,56 @@
 
-clear all
+
 program de_audit
-	syntax using , id(string) [clear] // seed(integer) --> work this out
-	*--> include a seed.
+	syntax anything(name=ssize) , id(string) ///
+		[exclude(varlist) blanks stringblanks(string asis) numblanks(numlist missingok) ]  // seed(integer) --> work the seed out
+
+	quietly {
 
 	*First check if there are enough to sample or if they should just be 
 	*all checked. If the number of cells is only 3000, it is probably harder to 
 	*check a sample than the whole dang thing.
-
+	
+	*Define the variables to check
+		unab varss : _all
+		loc varss : list varss - id
+		loc varss : list varss - exclude
+		loc varnum : list sizeof varss
 
 	*Make a dataset of only the IDs, and sample them
-		loc file : copy local using
-		
-		if `"`clear'"' == "clear" use `file' , clear
-		else use `file' 
-		
-		assert c(k)*c(N) > 3000 // make an error message.
+		tempfile file
+		qui save `file' , replace
+
+		cap assert `varnum'*c(N) > `ssize' // make an error message.
+		if _rc != 0 di as error "The cells to sample exceeds the total number of cells."
 
 		keep `id'
-		while c(N) < 10000 {
+		while c(N) < 5*`ssize' {
 			expand 2
-		} // 10000 almost certainly assures 1500 unique
-		bsample 10000
+		} // this almost certainly assures enough unique cells
+		bsample 5*`ssize'
 		
 		tempfile sample_ids
-		save `sample_ids', replace 
-
+		qui save `sample_ids', replace 
 
 	*Make dataset of variables
-		clear 
-		use `file' , clear
-		unab allvars: _all
-		
-		loc varnum = c(k)
 		clear
 		set obs `varnum'
 		
 		gen Variables="" // make a tempvar
 		local i=1
-		foreach var of local allvars {
+		foreach var of local varss {
 			qui replace Variables="`var'" in `i'
 			local i=`i'+1
 		}
 		drop if Variables=="" 
 		
-		while c(N) < 10000 {
-			expand 2 
-		} // 10000 almost certainly assures 1500 unique
-		bsample 10000
+		while c(N) < 5*`ssize' {
+			expand 2
+		} // this almost certainly assures enough unique cells
+		bsample 5*`ssize'
 		
 		tempfile sample_vars
-		save `sample_vars', replace 
-
+		qui save `sample_vars', replace 
 
 	*Merge the two samples to intersect
 		use `sample_ids' , clear
@@ -59,22 +58,16 @@ program de_audit
 		merge using `sample_vars'
 		drop _merge
 		
-		*duplicates drop
-		*keep in 1/1500
 		tempfile sample_cells
 		tostring `id' , replace
-		save `sample_cells' , replace
+		qui save `sample_cells' , replace
 		
 	*Merge with full dataset
 		use `file' , clear
-		tostring `id' , replace
-		foreach var of varlist _all { 
-			qui tostring `var', replace force 
-			qui replace `var'="" if `var'=="."
-		} 
+		qui tostring _all, replace force 
 		
 		cap drop _merge
-		merge 1:m `id' using `sample_cells'
+		qui merge 1:m `id' using `sample_cells'
 		drop if _merge != 3
 		drop _merge
 		
@@ -90,21 +83,46 @@ program de_audit
 			qui replace VarVal=trim(VarVal)
 		}
 		
-		gen Blank=mi(VarVal)
-		replace Blank=1 if VarVal==".c" // ok this isn't great, what to do here? must incorporate codes.
-		
-		*Just use 1500 nonblank
 		duplicates drop `id' Variables, force
 		gen double sorter=runiform()
 		sort sorter
-		drop if Blank == 1
-		assert c(N) >= 1500
-		keep in 1/1500
+
+		*Just use nonblanks, unless the option is specified
+		*loc numblankslist : subinstr local numblanks `" "' `","' 
+		loc numblankslist 
+		loc countt = 0
+		foreach vall of local numblanks {
+			if `countt' == 0 local numblankslist `"`"`vall'"'"'
+			else local numblankslist `"`numblankslist',`"`vall'"'"'
+			local ++countt
+		}
+		loc countt = 1
+		foreach vall of local stringblanks {
+			*loc wordd : word `countt' of `stringblanks'
+			if `countt' == 1 local stringblankslist `"`"`vall'"'"'
+			else local stringblankslist `"`stringblankslist',`"`vall'"'"'
+			local ++countt
+		} 
+		if `"`blanks'"' != `"blanks"' {
+			gen Blank = 0
+			replace Blank = 1 if mi(VarVal)
+			replace Blank = 1 if inlist(VarVal,`numblankslist')
+			replace Blank = 1 if inlist(VarVal,`stringblankslist')
+			drop if Blank == 1
+		}
+		assert c(N) >= `ssize'
+		keep in 1/`ssize'
 		
 		keep `id' Variables VarVal
 		sort `id' Variables
 
-
+	}
+	if `"`blanks'"' == "blanks" di as result "Sampled `ssize' cells, including blank cells."
+	else di as result "Sampled `ssize' cells, excluding blank cells."
+	/* di `"`numblankslist'"'
+	di `"`stringblankslist'"'
+	di `"`stringblanks'"'
+	*/
 
 end
 
