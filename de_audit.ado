@@ -1,7 +1,7 @@
 
 
 program de_audit
-	syntax anything(name=ssize) , id(string) ///
+	syntax [anything(name=ssize)] , id(string) ///
 		[exclude(varlist) blanks stringblanks(string asis) numblanks(numlist missingok) ]  // seed(integer) --> work the seed out
 
 	quietly {
@@ -9,6 +9,9 @@ program de_audit
 	*First check if there are enough to sample or if they should just be 
 	*all checked. If the number of cells is only 3000, it is probably harder to 
 	*check a sample than the whole dang thing.
+	
+	*Set default sample size
+	if `"`ssize'"' == "" local ssize 1500
 	
 	*Define the variables to check
 		unab varss : _all
