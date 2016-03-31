@@ -22,4 +22,4 @@ the "trim" command before determining whether they are
 considered blank. So you should specify "dont know" 
 instead of "dont know   " even if the latter occurred in the raw dataset.
 5. exclude() excludes a list of variables from the sample.
-6. For large samples (>1500), this program can take several minutes. It is particularly slow when the number of blank cells exceeds the number of non-blank cells.
+6. For large samples (>1500), this program might run for over a minute. It is particularly slow when the number of blank cells exceeds the number of non-blank cells. If it is running far too long, you may able to get performance by adjusting the sampling parameter down using the multiply() option. Default is 2 but lower values will take less time. Values less than 1.5 are likely to lead to errors.

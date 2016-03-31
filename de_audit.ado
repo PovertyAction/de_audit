@@ -1,11 +1,13 @@
-
+	
 
 program de_audit
 	syntax [anything(name=ssize)] , id(string) ///
-		[exclude(varlist) blanks stringblanks(string asis) numblanks(numlist missingok) ]  // seed(integer) --> work the seed out
+		[exclude(varlist) blanks stringblanks(string asis) numblanks(numlist missingok) multiply(real 2) ]  // seed(integer) --> work the seed out
 
 
 quietly {
+
+
 
 	*First check if there are enough to sample or if they should just be 
 	*all checked. If the number of cells is only 3000, it is probably harder to 
@@ -72,8 +74,10 @@ di in red `"Total: `cellnum'"'
 	*nonblanks for a sample of 100, you would want to sample 500 nonblanks. But only 20% of your sample
 	*is nonblanks. So you should really sample 500*5 = 2500 to get 100 unique nonblanks.
 
-	*The formula then becomes: 5*(desired sample size)*(total obs/nonblanks)
-		local sizetosample = ceil(5*`ssize'*`blankratio')
+	*The formula then becomes: 5*(desired sample size)*(total obs/nonblanks).
+	*I decided to make this flexible with default 2, since htis seems to be sufficient in almost
+	*all cases. 
+		local sizetosample = ceil(`multiply'*`ssize'*`blankratio')
 
 		tempfile file
 		qui save `file' , replace
@@ -156,7 +160,11 @@ di in red `"Total: `cellnum'"'
 			drop if Blank == 1
 		}
 		
-		assert c(N) >= `ssize'
+		cap assert c(N) >= `ssize'
+		if _rc != 0 {
+			di as error "Sampling multiplier is too low. Set a higher value for the multiply() option. Note that the default is 2. 
+			error 9
+		}
 		keep in 1/`ssize'
 		
 		keep `id' Variables VarVal
