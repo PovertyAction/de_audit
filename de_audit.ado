@@ -1,8 +1,9 @@
 	
 
 program de_audit
-	syntax [anything(name=ssize)] , id(string) ///
-		[exclude(varlist) blanks stringblanks(string asis) numblanks(numlist missingok) multiply(real 2) ]  // seed(integer) --> work the seed out
+	syntax [anything(name=ssize)] , id(string)  ///
+		[exclude(varlist) blanks stringblanks(string asis) numblanks(numlist missingok) multiply(real 2) ///
+		nsurveys(integer 0)  ]  // seed(integer) --> work the seed out
 
 
 quietly {
@@ -26,6 +27,10 @@ quietly {
 
 	*Make a dataset of only the IDs, and sample them
 		isid `id' // breaks if the id is not unique
+
+	*Check that the number of surveys is higher than the number of cells to sample
+		assert `nsurveys' < `ssize'
+		assert `nsurveys' >= 0
 
 
 	*Check if there are enough non-blank observations to sample from.
@@ -75,7 +80,7 @@ di in red `"Total: `cellnum'"'
 	*is nonblanks. So you should really sample 500*5 = 2500 to get 100 unique nonblanks.
 
 	*The formula then becomes: 5*(desired sample size)*(total obs/nonblanks).
-	*I decided to make this flexible with default 2, since htis seems to be sufficient in almost
+	*I decided to make this flexible with default 2, since this seems to be sufficient in almost
 	*all cases. 
 		local sizetosample = ceil(`multiply'*`ssize'*`blankratio')
 
@@ -86,10 +91,35 @@ di in red `"Total: `cellnum'"'
 		if _rc != 0 di as error "The cells to sample exceeds the total number of cells."
 
 		keep `id'
+	
+		if "`nsurveys'" != "0" { 
+			sample `nsurveys' , count // Sample N surveys or keep them all
+		}
+		
+di in red "SURVEYS `nsurveys'"
+noisily list
+
 		while c(N) < `sizetosample' {
 			expand 2
 		} // this almost certainly assures enough unique cells --> maybe not in cases with tons of blanks!!
-		bsample `sizetosample'
+		
+		if "`nsurveys'" != "0" {
+			loc varstosample = ceil(`sizetosample' / `nsurveys')
+			sample `varstosample' , by(`id') count
+			
+			tempname sortt
+			sort `id'
+			bys `id' : gen `sortt' = _n
+			while _N > `sizetosample' {
+				sort `sortt' `id'
+				drop in 1
+			}
+			drop `sortt'
+						
+		}
+		else bsample `sizetosample'
+		di in red "`sizetosample' sampled `=_N'"
+
 		
 		tempfile sample_ids
 		qui save `sample_ids', replace 
@@ -117,12 +147,14 @@ di in red `"Total: `cellnum'"'
 	*Merge the two samples to intersect
 		use `sample_ids' , clear
 		cap drop _merge
-		merge using `sample_vars'
+		noisily merge using `sample_vars'
+		*drop if _merge !=3
 		drop _merge
 		
 		tempfile sample_cells
 		tostring `id' , replace
 		qui save `sample_cells' , replace
+		
 		
 	*Merge with full dataset
 		use `file' , clear
@@ -133,7 +165,9 @@ di in red `"Total: `cellnum'"'
 		drop if _merge != 3
 		drop _merge
 		
-
+		
+di in red "`=_N'"
+*noisily list Variables
 	*Here we just take the value of the variable that needs to be checked in a given row, 
 	*and put it into the new variable "VarVal", which is what the manual check operators
 	*will use to compare to the paper survey
@@ -165,9 +199,28 @@ di in red `"Total: `cellnum'"'
 			di as error "Sampling multiplier is too low. Set a higher value for the multiply() option. Note that the default is 2. 
 			error 9
 		}
-		keep in 1/`ssize'
 		
-		keep `id' Variables VarVal
+	noisily count
+		if "`nsurveys'" != "0" { 
+			loc varstokeep = ceil(`ssize' / `nsurveys')
+			bys `id' (sorter) : keep if _n <= `varstokeep' 
+			
+			tempname sortt
+			sort `id'
+			bys `id' : gen `sortt' = _n
+			while _N > `ssize' {
+				sort `sortt' `id'
+				drop in 1
+			}
+			drop `sortt'
+		}
+		
+		else { 
+			keep in 1/`ssize'
+		}
+	noisily count
+		
+		keep `id' Variables VarVal sorter
 		sort `id' Variables
 
 	}
